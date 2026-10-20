@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastapi-payment-gateway"
+version = "0.1.0"
+description = "Multi-provider payment gateway service with idempotency, signed webhooks, smart routing and settlement"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Akib Jafor" }]
+requires-python = ">=3.10"
+keywords = ["fastapi", "payments", "bkash", "sslcommerz", "stripe", "fintech", "settlement"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Framework :: FastAPI",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Office/Business :: Financial",
+]
+dependencies = [
+  "fastapi>=0.110,<1.0",
+  "uvicorn[standard]>=0.27",
+  "sqlalchemy>=2.0,<3.0",
+  "pydantic>=2.5,<3.0",
+  "pydantic-settings>=2.1",
+  "httpx>=0.26",
+  "psycopg[binary]>=3.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4",
+  "pytest-cov>=4.1",
+  "ruff>=0.3",
+]
+
+[project.scripts]
+gateway = "app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+  "error::DeprecationWarning:app.*",
+  "ignore:Using `httpx` with `starlette.testclient`",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]
+ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
