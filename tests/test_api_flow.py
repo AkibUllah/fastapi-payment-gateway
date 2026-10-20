@@ -173,3 +173,14 @@ def test_get_unknown_payment_is_404_and_merchants_are_isolated(client, auth, app
         db.commit()
     other = client.get(f"/v1/payments/{payment['id']}", headers={"X-API-Key": other_key})
     assert other.status_code == 404
+
+
+def test_custom_validator_errors_serialise(client, auth):
+    response = client.post(
+        "/v1/payments",
+        json={"amount_minor": 1_000, "currency": "XYZ", "method": "bkash"},
+        headers=auth,
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+    assert "unsupported currency" in response.text

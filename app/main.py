@@ -8,6 +8,7 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -108,7 +109,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "error": {
                     "code": "validation_error",
                     "message": "Invalid request",
-                    "details": exc.errors(),
+                    "details": jsonable_encoder(exc.errors()),
                 }
             },
             status_code=422,
