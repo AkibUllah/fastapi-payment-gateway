@@ -3,7 +3,7 @@ VENV ?= .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: help venv install dev test lint fmt run merchant settle docker-up docker-down clean
+.PHONY: help venv install dev test lint fmt run merchant settle openapi docker-up docker-down clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -40,6 +40,9 @@ merchant: ## Create a demo merchant and print its API key (NAME="Shop" URL=https
 
 settle: ## Run settlement for a date (DATE=YYYY-MM-DD, default yesterday)
 	$(PY) -m app.cli run-settlement $(if $(DATE),--date $(DATE),)
+
+openapi: ## Export the OpenAPI document to openapi.json
+	$(PY) scripts/export_openapi.py
 
 docker-up: ## Start API + Postgres with docker compose
 	docker compose up --build -d

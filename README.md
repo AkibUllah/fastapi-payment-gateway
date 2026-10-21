@@ -8,6 +8,15 @@ A multi-provider payment gateway service: one API in front of bKash, SSLCommerz 
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+## Try it live
+
+| | |
+|---|---|
+| API reference | https://akibullah.github.io/fastapi-payment-gateway/ — Swagger UI built from the exported OpenAPI document (static; no backend behind it) |
+| Run in your browser | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/AkibUllah/fastapi-payment-gateway?quickstart=1) — starts API + PostgreSQL with `docker compose`, creates a demo merchant (`Dhaka Mart`) and writes its API key to `.demo-merchant.txt`; open forwarded port 8000 at `/docs` and use that key as `X-API-Key`. |
+| One-click deploy | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/AkibUllah/fastapi-payment-gateway) — `render.yaml` provisions the web service and a free PostgreSQL; create a merchant afterwards with `python -m app.cli create-merchant` in the Render shell. |
+| Local | `docker compose up` (see Quick Start) |
+
 ## Why this exists
 
 Every e-commerce or POS product I have shipped in Bangladesh ended up integrating bKash and SSLCommerz (and Stripe for card payments abroad), and every one of them re-solved the same problems: retried requests creating duplicate charges, refunds that drifted out of sync with the provider, webhooks that could not be trusted, and a month-end spent matching provider reports to the ledger by hand. This service is the shared layer those products should have had from day one. Money is handled in integer minor units end to end, every state change goes through one transition table, and settlement produces a file finance can actually reconcile. The provider adapters are sandbox implementations behind a single protocol, so a real integration is a drop-in adapter rather than a rewrite.

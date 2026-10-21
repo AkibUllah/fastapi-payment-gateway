@@ -1,0 +1,34 @@
+# Render blueprint: one-click deploy of the API with a managed PostgreSQL.
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: fastapi-payment-gateway
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DATABASE_URL
+        fromDatabase:
+          name: payment-gateway-db
+          property: connectionString
+      - key: BKASH_WEBHOOK_SECRET
+        generateValue: true
+      - key: SSLCOMMERZ_WEBHOOK_SECRET
+        generateValue: true
+      - key: STRIPE_WEBHOOK_SECRET
+        generateValue: true
+
+databases:
+  - name: payment-gateway-db
+    plan: free
+    databaseName: gateway
+    user: gateway
