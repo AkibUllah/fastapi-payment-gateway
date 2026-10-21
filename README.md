@@ -1,3 +1,4 @@
+<!-- topics: fastapi,python,payment-gateway,fintech,bkash,sslcommerz,stripe,idempotency,webhooks,sqlalchemy,docker -->
 # FastAPI Payment Gateway
 
 A multi-provider payment gateway service: one API in front of bKash, SSLCommerz and Stripe, with idempotent requests, a strict payment state machine, signed merchant webhooks, fee-aware routing and daily settlement with reconciliation.
