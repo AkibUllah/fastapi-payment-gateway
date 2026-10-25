@@ -4,6 +4,8 @@
 A multi-provider payment gateway service: one API in front of bKash, SSLCommerz and Stripe, with idempotent requests, a strict payment state machine, signed merchant webhooks, fee-aware routing and daily settlement with reconciliation.
 
 [![CI](https://github.com/AkibUllah/fastapi-payment-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/AkibUllah/fastapi-payment-gateway/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/AkibUllah/fastapi-payment-gateway/actions/workflows/codeql.yml/badge.svg)](https://github.com/AkibUllah/fastapi-payment-gateway/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/AkibUllah/fastapi-payment-gateway)](https://github.com/AkibUllah/fastapi-payment-gateway/releases)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -16,6 +18,16 @@ A multi-provider payment gateway service: one API in front of bKash, SSLCommerz 
 | Run in your browser | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/AkibUllah/fastapi-payment-gateway?quickstart=1) — starts API + PostgreSQL with `docker compose`, creates a demo merchant (`Dhaka Mart`) and writes its API key to `.demo-merchant.txt`; open forwarded port 8000 at `/docs` and use that key as `X-API-Key`. |
 | One-click deploy | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/AkibUllah/fastapi-payment-gateway) — `render.yaml` provisions the web service and a free PostgreSQL; create a merchant afterwards with `python -m app.cli create-merchant` in the Render shell. |
 | Local | `docker compose up` (see Quick Start) |
+
+## Screenshots
+
+![Swagger UI API reference](docs/images/api-reference.png)
+
+Live API reference on GitHub Pages: payments, provider webhooks and settlement endpoints.
+
+![curl session against a local gateway](docs/images/terminal-demo.png)
+
+A real curl session against a local instance: bKash payment with fee routing, idempotent replay, key reuse rejected, partial refund, over-refund blocked, settlement run.
 
 ## Why this exists
 
@@ -164,7 +176,7 @@ app/
 │   ├── webhooks.py      # outbox + signed sender with retries
 │   └── settlements.py   # batches, CSV, reconciliation
 └── api/                 # routers: payments, webhooks, settlements, health
-tests/                   # 66 tests, SQLite in-memory, httpx MockTransport
+tests/                   # 72 tests, SQLite in-memory, httpx MockTransport
 ```
 
 ## Testing
@@ -181,11 +193,11 @@ Tests need no Postgres or network: the app runs on an in-memory SQLite engine an
 
 ## Roadmap
 
-- Alembic migrations (schema is currently created with `create_all`)
-- Durable webhook retry with backoff beyond the in-request attempts (see my `webhook-relay` project)
-- Real HTTP adapters for bKash tokenized checkout and SSLCommerz behind the same protocol, with recorded fixtures
-- Settlement adjustments for refunds that happen after a batch is generated
-- Per-merchant fee contracts loaded from configuration instead of the static table
+- [ ] Alembic migrations (schema is currently created with `create_all`) (#1)
+- [ ] Durable webhook retry with backoff beyond the in-request attempts (see my `webhook-relay` project) (#2)
+- [ ] Real HTTP adapters for bKash tokenized checkout and SSLCommerz behind the same protocol, with recorded fixtures (#3)
+- [ ] Settlement adjustments for refunds that happen after a batch is generated (#4)
+- [ ] Per-merchant fee contracts loaded from configuration instead of the static table (#5)
 
 ## License
 
