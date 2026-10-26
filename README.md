@@ -37,7 +37,7 @@ Every e-commerce or POS product I have shipped in Bangladesh ended up integratin
 
 - Provider adapter pattern: `BkashAdapter`, `SSLCommerzAdapter`, `StripeAdapter` (sandbox) and a `MockProvider` for tests, all behind one `PaymentProvider` protocol
 - Payment lifecycle state machine (`CREATED → AUTHORIZED → CAPTURED → PARTIALLY_REFUNDED/REFUNDED`, plus `FAILED`/`CANCELLED`); illegal transitions are rejected with HTTP 409 and never persisted
-- `Idempotency-Key` header on create/capture/refund: stored responses are replayed byte-for-byte, reuse with a different body is rejected
+- `Idempotency-Key` header on create/capture/refund: the key is reserved before the provider is called, so a concurrent duplicate gets `409` with `Retry-After` instead of a second charge; stored responses are replayed byte-for-byte, reuse with a different body is rejected, and a crashed request frees its key after a short lease
 - Merchant API keys stored as SHA-256 hashes with a lookup prefix; per-merchant data isolation
 - Outgoing merchant webhooks signed with HMAC-SHA256 (`X-Gateway-Signature: t=…,v1=…`), bounded retries, delivery log queryable via the API
 - Inbound provider webhook verification (bare HMAC for bKash/SSLCommerz, timestamped Stripe-style signature with replay window) with idempotent event application
@@ -70,7 +70,7 @@ flowchart LR
 Key decisions:
 
 - **One mutation path.** Every status change goes through `PaymentService._transition`, which consults the transition table, stamps timestamps, appends a `PaymentEvent` and queues the merchant webhook. There is no second way to flip a status.
-- **Idempotency is transactional.** The stored response and the business change are committed together, so a crash between them cannot leave a charge without a replayable receipt.
+- **Idempotency is transactional and race-safe.** A request first inserts an `in_progress` reservation for its key and commits it, so the unique constraint on (merchant, key) picks exactly one winner even when duplicates arrive in the same millisecond; the others get `409 idempotency_key_in_progress` with `Retry-After` and never reach a provider. The stored response and the business change are then committed together, so a crash between them cannot leave a charge without a replayable receipt. If the holder dies, its reservation's lease (`IDEMPOTENCY_LOCK_SECONDS`) expires and the next retry takes the key over.
 - **Webhooks are an outbox.** Deliveries are rows written in the same transaction as the state change and dispatched after commit by a background task; the delivery log is the source of truth, not the HTTP call.
 - **Integers for money.** Amounts are minor units (`150000` = ৳1,500.00); fee rules are basis points plus a fixed component with half-up rounding done in `Decimal`, never `float`.
 - **Settlement is a snapshot.** A batch locks in gross, fee and refunded amounts per payment at run time; payments carry their `settlement_id` so a re-run never double-settles.
@@ -187,7 +187,7 @@ make cov         # with coverage
 make lint        # ruff check + format check
 ```
 
-Covered: every legal and illegal state transition; fee rounding (half-up, floors, caps) and decimal conversions; routing choice, overrides and no-route errors; API key hashing; signature creation, tampering, stale timestamps and malformed headers; idempotent create/refund replay, scoped keys and body-mismatch rejection; the full API flow (auto/manual capture, partial capture, cancel, partial then full refund, over-refund, sandbox decline, merchant isolation); outgoing webhook signing, retry and failure marking; inbound bKash/SSLCommerz/Stripe notifications including idempotent re-delivery and terminal-state guards; settlement netting, CSV export, clean and discrepant reconciliation, and the CLI.
+Covered: every legal and illegal state transition; fee rounding (half-up, floors, caps) and decimal conversions; routing choice, overrides and no-route errors; API key hashing; signature creation, tampering, stale timestamps and malformed headers; idempotent create/refund replay, scoped keys and body-mismatch rejection; key reservations (duplicate in flight → 409 with no provider call, lease expiry takeover, losing the insert race, release after a failed request, and 8 truly concurrent requests on PostgreSQL reserving the key exactly once); the full API flow (auto/manual capture, partial capture, cancel, partial then full refund, over-refund, sandbox decline, merchant isolation); outgoing webhook signing, retry and failure marking; inbound bKash/SSLCommerz/Stripe notifications including idempotent re-delivery and terminal-state guards; settlement netting, CSV export, clean and discrepant reconciliation, and the CLI.
 
 Tests need no Postgres or network: the app runs on an in-memory SQLite engine and merchant webhooks go to an `httpx.MockTransport`.
 
