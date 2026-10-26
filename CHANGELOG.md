@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-26
+
 ### Added
 
 - Idempotency keys are reserved before the provider is called. Concurrent duplicates of a request now get `409 idempotency_key_in_progress` with a `Retry-After` header instead of reaching the provider a second time. A request that fails releases its key; one that crashes frees it when `IDEMPOTENCY_LOCK_SECONDS` (default 60) runs out.
@@ -50,5 +52,6 @@ First public release.
 - Validation errors are serialised correctly in the 422 error envelope.
 - `postgres://` and `postgresql://` database URLs are rewritten to the psycopg 3 driver.
 
-[Unreleased]: https://github.com/AkibUllah/fastapi-payment-gateway/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/AkibUllah/fastapi-payment-gateway/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/AkibUllah/fastapi-payment-gateway/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/AkibUllah/fastapi-payment-gateway/releases/tag/v0.1.0
