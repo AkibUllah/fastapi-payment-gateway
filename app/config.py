@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     webhook_signature_tolerance_seconds: int = 300
 
     idempotency_ttl_hours: int = 24
+    # How long a request holds an Idempotency-Key while it runs. Keep it above the slowest
+    # provider round trip; a crashed request releases the key when this expires.
+    idempotency_lock_seconds: int = Field(default=60, ge=1, le=3600)
 
     @field_validator("database_url")
     @classmethod

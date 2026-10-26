@@ -76,4 +76,8 @@ def get_settlement_service(request: Request, db: Session = Depends(get_db)) -> S
 def get_idempotency_store(
     db: Session = Depends(get_db), settings: Settings = Depends(get_settings_dep)
 ) -> IdempotencyStore:
-    return IdempotencyStore(db, ttl_hours=settings.idempotency_ttl_hours)
+    return IdempotencyStore(
+        db,
+        ttl_hours=settings.idempotency_ttl_hours,
+        lock_seconds=settings.idempotency_lock_seconds,
+    )

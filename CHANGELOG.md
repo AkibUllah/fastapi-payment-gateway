@@ -9,11 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Idempotency keys are reserved before the provider is called. Concurrent duplicates of a request now get `409 idempotency_key_in_progress` with a `Retry-After` header instead of reaching the provider a second time. A request that fails releases its key; one that crashes frees it when `IDEMPOTENCY_LOCK_SECONDS` (default 60) runs out.
+- CI job that runs the concurrent-reservation test against PostgreSQL.
+
 - CodeQL code scanning workflow and Dependabot configuration (pip, Docker, GitHub Actions).
 - API reference and terminal screenshots in the README.
 - Roadmap tracked as GitHub issues under the `v0.2.0` milestone.
 
 ### Changed
+
+- `idempotency_keys` gains `state` and `locked_until` columns, and `status_code` / `response_body` become nullable. Existing databases need:
+  ```sql
+  ALTER TABLE idempotency_keys ADD COLUMN state VARCHAR(16) NOT NULL DEFAULT 'completed';
+  ALTER TABLE idempotency_keys ADD COLUMN locked_until TIMESTAMPTZ;
+  ALTER TABLE idempotency_keys ALTER COLUMN status_code DROP NOT NULL;
+  ALTER TABLE idempotency_keys ALTER COLUMN response_body DROP NOT NULL;
+  ```
 
 - CI workflow runs with a read-only `GITHUB_TOKEN` by default; Dependabot groups all GitHub Actions bumps into one PR.
 

@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from app import __version__
 from app.api import health, payments, settlements, webhooks
 from app.config import Settings, get_settings
-from app.core.idempotency import IdempotencyConflictError
+from app.core.idempotency import IdempotencyConflictError, IdempotencyInProgressError
 from app.core.routing import PaymentRouter
 from app.core.security import SignatureError
 from app.core.state_machine import InvalidTransitionError
@@ -93,6 +93,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(InvalidTransitionError)
     async def _transition_error(_: Request, exc: InvalidTransitionError) -> JSONResponse:
         return _error(409, "invalid_transition", str(exc))
+
+    @app.exception_handler(IdempotencyInProgressError)
+    async def _idempotency_in_progress(_: Request, exc: IdempotencyInProgressError) -> JSONResponse:
+        response = _error(409, "idempotency_key_in_progress", str(exc))
+        response.headers["Retry-After"] = str(exc.retry_after)
+        return response
 
     @app.exception_handler(IdempotencyConflictError)
     async def _idempotency_error(_: Request, exc: IdempotencyConflictError) -> JSONResponse:

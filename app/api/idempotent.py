@@ -26,23 +26,32 @@ def run_idempotent(
 ) -> JSONResponse:
     """Execute `produce` once per (merchant, key, payload); replay the stored response otherwise.
 
-    `produce` must flush but not commit; this helper commits so the idempotency record and
-    the business change land in the same transaction.
+    The key is reserved (and committed) before `produce` runs, so a concurrent duplicate
+    is answered with 409 instead of calling the provider twice. `produce` must flush but
+    not commit; this helper commits so the stored response and the business change land
+    in the same transaction.
     """
     if key is None:
         status_code, body = produce()
         db.commit()
         return JSONResponse(body, status_code=status_code)
 
-    request_hash = fingerprint(request_payload)
-    record = store.lookup(merchant.id, key, request_hash)
-    if record is not None:
+    reservation = store.begin(merchant.id, key, fingerprint(request_payload))
+    if reservation.replay is not None:
+        record = reservation.replay
         return JSONResponse(
-            json.loads(record.response_body),
-            status_code=record.status_code,
+            json.loads(record.response_body or "{}"),
+            status_code=record.status_code or 200,
             headers={REPLAY_HEADER: "true"},
         )
-    status_code, body = produce()
-    store.save(merchant.id, key, request_hash, status_code, body)
-    db.commit()
+    assert reservation.record_id is not None
+    try:
+        status_code, body = produce()
+        store.complete(reservation.record_id, status_code, body)
+        db.commit()
+    except BaseException:
+        # Undo the business change and free the key so the client can retry it.
+        db.rollback()
+        store.release(reservation.record_id)
+        raise
     return JSONResponse(body, status_code=status_code, headers={REPLAY_HEADER: "false"})
