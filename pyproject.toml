@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fastapi-payment-gateway"
-version = "0.1.0"
+version = "0.2.0"
 description = "Multi-provider payment gateway service with idempotency, signed webhooks, smart routing and settlement"
 readme = "README.md"
 license = { text = "MIT" }
