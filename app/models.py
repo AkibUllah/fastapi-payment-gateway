@@ -123,8 +123,12 @@ class IdempotencyRecord(Base):
     merchant_id: Mapped[str] = mapped_column(ForeignKey("merchants.id"), index=True)
     key: Mapped[str] = mapped_column(String(255), nullable=False)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    status_code: Mapped[int] = mapped_column(Integer, nullable=False)
-    response_body: Mapped[str] = mapped_column(Text, nullable=False)
+    # "in_progress" while the first request holds the key, "completed" once its response
+    # is stored. `locked_until` bounds how long an in-progress reservation blocks retries.
+    state: Mapped[str] = mapped_column(String(16), default="completed", nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    response_body: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
