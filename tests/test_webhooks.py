@@ -28,12 +28,12 @@ def test_outgoing_webhooks_are_signed_and_verifiable(client, auth, merchant, sin
     assert deliveries[0]["attempts"] == 1
 
 
-def test_outgoing_webhook_retries_then_marks_failed(client, auth, sink):
+def test_outgoing_webhook_retries_in_request_then_hands_over_to_the_schedule(client, auth, sink):
     sink.fail_next = 5  # more than max_attempts (3)
     create_payment(client, auth)
     assert len(sink.requests) == 3
     delivery = client.get("/v1/webhooks/deliveries", headers=auth).json()[0]
-    assert delivery["status"] == "failed"
+    assert delivery["status"] == "retrying"
     assert delivery["attempts"] == 3
     assert delivery["last_error"] == "HTTP 503"
 

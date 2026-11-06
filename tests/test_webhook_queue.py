@@ -2,32 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
 
 from app.models import Merchant, Payment, WebhookDelivery
 from app.services.webhook_queue import DELIVERED, FAILED, PENDING, RETRYING, DeliveryQueue
+from tests.conftest import T0
 
-T0 = datetime(2026, 11, 6, 10, 0, tzinfo=timezone.utc)
 LEASE = 60
-
-
-class Clock:
-    def __init__(self) -> None:
-        self.now = T0
-
-    def __call__(self) -> datetime:
-        return self.now
-
-    def advance(self, seconds: float) -> None:
-        self.now += timedelta(seconds=seconds)
-
-
-@pytest.fixture
-def clock() -> Clock:
-    return Clock()
 
 
 @pytest.fixture

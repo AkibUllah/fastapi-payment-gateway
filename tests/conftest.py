@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -16,6 +17,20 @@ from app.providers.mock import MockProvider
 from app.services.webhooks import WebhookSender
 
 MERCHANT_WEBHOOK_URL = "https://merchant.example.com/payments/webhook"
+T0 = datetime(2026, 11, 6, 10, 0, tzinfo=timezone.utc)
+
+
+class Clock:
+    """Hand-cranked replacement for the wall clock."""
+
+    def __init__(self, start: datetime = T0) -> None:
+        self.now = start
+
+    def __call__(self) -> datetime:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += timedelta(seconds=seconds)
 
 
 @dataclass
@@ -54,7 +69,12 @@ def sink() -> WebhookSink:
 
 
 @pytest.fixture
-def app(settings: Settings, sink: WebhookSink):
+def clock() -> Clock:
+    return Clock()
+
+
+@pytest.fixture
+def app(settings: Settings, sink: WebhookSink, clock: Clock):
     application = create_app(settings)
     application.state.providers["mock"] = MockProvider()
     application.state.router = PaymentRouter(application.state.providers)
@@ -64,6 +84,8 @@ def app(settings: Settings, sink: WebhookSink):
         backoff_seconds=0,
         transport=httpx.MockTransport(sink.handler),
         sleep=lambda _seconds: None,
+        clock=clock,
+        rng=lambda: 0.5,  # no jitter: delays land exactly on the schedule
     )
     return application
 

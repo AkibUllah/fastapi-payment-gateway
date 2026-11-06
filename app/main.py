@@ -23,7 +23,7 @@ from app.database import init_db, make_engine, make_session_factory
 from app.logging_config import configure_logging, request_id_var
 from app.providers import build_providers
 from app.services.errors import ServiceError
-from app.services.webhooks import WebhookSender
+from app.services.webhooks import build_webhook_sender
 
 logger = logging.getLogger("app")
 
@@ -61,11 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.session_factory = make_session_factory(app.state.engine)
     app.state.providers = providers
     app.state.router = PaymentRouter(providers)
-    app.state.webhook_sender = WebhookSender(
-        timeout=settings.webhook_timeout_seconds,
-        max_attempts=settings.webhook_max_attempts,
-        backoff_seconds=settings.webhook_retry_backoff_seconds,
-    )
+    app.state.webhook_sender = build_webhook_sender(settings)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
