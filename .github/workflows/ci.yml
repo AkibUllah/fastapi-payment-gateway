@@ -37,7 +37,7 @@ jobs:
         run: python -c "from app.main import app; print(len(app.routes), 'routes')"
 
   postgres:
-    name: idempotency races on PostgreSQL
+    name: concurrency on PostgreSQL
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -64,6 +64,8 @@ jobs:
           pip install -e ".[dev]"
       - name: Concurrent Idempotency-Key reservations
         run: pytest tests/test_idempotency_reservations.py -v
+      - name: Concurrent webhook workers
+        run: pytest tests/test_webhook_postgres.py -v
 
   docker:
     name: docker build
