@@ -11,6 +11,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -170,6 +171,7 @@ class SettlementLine(Base):
 
 class WebhookDelivery(Base):
     __tablename__ = "webhook_deliveries"
+    __table_args__ = (Index("ix_webhook_deliveries_due", "status", "next_attempt_at"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("whk"))
     merchant_id: Mapped[str] = mapped_column(ForeignKey("merchants.id"), index=True)
@@ -179,6 +181,13 @@ class WebhookDelivery(Base):
     payload: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Steps of the retry schedule already used. Differs from `attempts`, which also counts the
+    # in-request sends.
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Lease held by the worker sending this row; see app/services/webhook_queue.py.
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claim_token: Mapped[str | None] = mapped_column(String(32))
     response_status: Mapped[int | None] = mapped_column(Integer)
     last_error: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
