@@ -6,12 +6,14 @@ from __future__ import annotations
 import json
 import logging
 import random
+import threading
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import httpx
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -47,6 +49,23 @@ class AttemptResult:
     @property
     def ok(self) -> bool:
         return self.error is None
+
+
+@dataclass
+class DispatchStats:
+    """What one dispatcher pass did."""
+
+    claimed: int = 0
+    delivered: int = 0
+    rescheduled: int = 0
+    failed: int = 0
+    lost: int = 0
+
+    def __str__(self) -> str:
+        return (
+            f"claimed={self.claimed} delivered={self.delivered} "
+            f"rescheduled={self.rescheduled} failed={self.failed} lost={self.lost}"
+        )
 
 
 class WebhookOutbox:
@@ -134,6 +153,49 @@ class WebhookSender:
                 if claim is not None:
                     self._send(queue, client, claim, self.max_attempts, retries_used=0)
 
+    def dispatch_due(
+        self,
+        session_factory: sessionmaker[Session],
+        limit: int = 50,
+        stop: threading.Event | None = None,
+    ) -> DispatchStats:
+        """Send up to `limit` due rows, one attempt each. Safe to run from many workers.
+
+        Rows are claimed one at a time, so the lease only ever has to cover a single attempt
+        and a worker that stops early strands nothing.
+        """
+        queue = self._queue(session_factory)
+        stats = DispatchStats()
+        with self._client() as client:
+            while stats.claimed < limit and not (stop and stop.is_set()):
+                claim = queue.claim_due()
+                if claim is None:
+                    break
+                stats.claimed += 1
+                outcome = self._send(queue, client, claim, 1, retries_used=claim.retry_count + 1)
+                setattr(stats, outcome, getattr(stats, outcome) + 1)
+        return stats
+
+    def run_forever(
+        self,
+        session_factory: sessionmaker[Session],
+        stop: threading.Event,
+        poll_seconds: float = 5.0,
+        batch_size: int = 50,
+    ) -> None:
+        """Dispatch until `stop` is set. A database outage is waited out, not fatal."""
+        while not stop.is_set():
+            try:
+                stats = self.dispatch_due(session_factory, limit=batch_size, stop=stop)
+            except SQLAlchemyError:
+                logger.exception("webhook dispatch pass failed")
+                stop.wait(poll_seconds)
+                continue
+            if stats.claimed:
+                logger.info("webhook dispatch pass %s", stats)
+            if stats.claimed < batch_size:
+                stop.wait(poll_seconds)
+
     def _send(
         self,
         queue: DeliveryQueue,
@@ -141,13 +203,14 @@ class WebhookSender:
         claim: Claim,
         attempts: int,
         retries_used: int,
-    ) -> None:
-        """Run up to `attempts` POSTs for a claim, then record how it ended."""
+    ) -> str:
+        """Run up to `attempts` POSTs for a claim, record how it ended and return that outcome
+        as a `DispatchStats` field name."""
         result = None
         for attempt in range(1, attempts + 1):
             if not queue.start_attempt(claim):
                 logger.warning("webhook lease lost id=%s, leaving it to the new owner", claim.id)
-                return
+                return "lost"
             result = self._post(client, claim)
             if result.ok:
                 queue.mark_delivered(claim, result.status_code)
@@ -158,7 +221,7 @@ class WebhookSender:
                     result.status_code,
                     attempt,
                 )
-                return
+                return "delivered"
             logger.warning(
                 "webhook attempt failed id=%s attempt=%s error=%s", claim.id, attempt, result.error
             )
@@ -174,8 +237,12 @@ class WebhookSender:
             retry_count=retries_used,
             next_attempt_at=next_attempt_at,
         )
-        if recorded and next_attempt_at is None:
+        if not recorded:
+            return "lost"
+        if next_attempt_at is None:
             logger.error("webhook gave up id=%s error=%s", claim.id, result.error)
+            return "failed"
+        return "rescheduled"
 
     @staticmethod
     def _post(client: httpx.Client, claim: Claim) -> AttemptResult:
