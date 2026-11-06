@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from app.models import Merchant, WebhookDelivery
 from app.schemas import ErrorResponse, WebhookAck, WebhookDeliveryOut
 from app.services.errors import NotFoundError, ValidationFailed
 from app.services.payments import PaymentService
+from app.services.webhook_queue import DELIVERED, requeue
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,48 @@ def list_deliveries(
         stmt = stmt.where(WebhookDelivery.status == status)
     stmt = stmt.order_by(WebhookDelivery.created_at.desc()).limit(limit)
     return [WebhookDeliveryOut.from_model(d) for d in db.scalars(stmt).all()]
+
+
+@router.post(
+    "/deliveries/{delivery_id}/retry",
+    response_model=WebhookDeliveryOut,
+    status_code=202,
+    responses={
+        200: {"description": "Already delivered; nothing was sent"},
+        401: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+    },
+    summary="Redeliver a failed or waiting webhook now",
+)
+def retry_delivery(
+    delivery_id: str,
+    request: Request,
+    response: Response,
+    background: BackgroundTasks,
+    merchant: Merchant = Depends(get_current_merchant),
+    db: Session = Depends(get_db),
+) -> WebhookDeliveryOut:
+    """Idempotent: a delivered event is never re-sent, and repeats while a send is in flight
+    collapse into that send because every attempt has to claim the row first."""
+    delivery = db.scalar(
+        select(WebhookDelivery).where(
+            WebhookDelivery.id == delivery_id, WebhookDelivery.merchant_id == merchant.id
+        )
+    )
+    if delivery is None:  # same answer for another merchant's id, so ids can't be probed
+        raise NotFoundError(f"Delivery '{delivery_id}' not found")
+    if delivery.status == DELIVERED:
+        response.status_code = 200
+        return WebhookDeliveryOut.from_model(delivery)
+
+    sender = request.app.state.webhook_sender
+    requeue(db, delivery.id, sender.clock())
+    db.commit()
+    db.refresh(delivery)
+    background.add_task(
+        sender.deliver, request.app.state.session_factory, [delivery.id], max_attempts=1
+    )
+    return WebhookDeliveryOut.from_model(delivery)
 
 
 __all__ = ["router", "SignatureError"]
