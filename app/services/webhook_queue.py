@@ -179,3 +179,27 @@ class DeliveryQueue:
             )
             db.commit()
             return result.rowcount == 1
+
+
+def requeue(db: Session, delivery_id: str, now: datetime) -> None:
+    """Make a delivery due now. Safe to repeat: each statement only matches a row it can move.
+
+    A failed row reopens with a fresh schedule. A row still on the schedule just comes forward
+    and keeps the retries it has used. A delivered row is untouched. The caller commits.
+    """
+    db.execute(
+        update(WebhookDelivery)
+        .where(WebhookDelivery.id == delivery_id, WebhookDelivery.status == FAILED)
+        .values(status=RETRYING, retry_count=0, next_attempt_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    db.execute(
+        update(WebhookDelivery)
+        .where(
+            WebhookDelivery.id == delivery_id,
+            WebhookDelivery.status.in_(ACTIVE_STATUSES),
+            WebhookDelivery.next_attempt_at > now,
+        )
+        .values(next_attempt_at=now)
+        .execution_options(synchronize_session=False)
+    )

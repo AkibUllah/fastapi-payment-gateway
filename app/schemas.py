@@ -281,6 +281,7 @@ class WebhookDeliveryOut(BaseModel):
     target_url: str
     status: str
     attempts: int
+    next_attempt_at: datetime | None
     response_status: int | None
     last_error: str | None
     created_at: datetime
@@ -295,6 +296,7 @@ class WebhookDeliveryOut(BaseModel):
             target_url=delivery.target_url,
             status=delivery.status,
             attempts=delivery.attempts,
+            next_attempt_at=delivery.next_attempt_at,
             response_status=delivery.response_status,
             last_error=delivery.last_error,
             created_at=delivery.created_at,

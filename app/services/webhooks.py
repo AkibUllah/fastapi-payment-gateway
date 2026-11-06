@@ -142,16 +142,22 @@ class WebhookSender:
     def _queue(self, session_factory: sessionmaker[Session]) -> DeliveryQueue:
         return DeliveryQueue(session_factory, lease_seconds=self.lease_seconds, clock=self.clock)
 
-    def deliver(self, session_factory: sessionmaker[Session], delivery_ids: Sequence[str]) -> None:
+    def deliver(
+        self,
+        session_factory: sessionmaker[Session],
+        delivery_ids: Sequence[str],
+        max_attempts: int | None = None,
+    ) -> None:
         """The in-request fast path. What it cannot deliver is left for the dispatcher."""
         if not delivery_ids:
             return
+        attempts = max_attempts or self.max_attempts
         queue = self._queue(session_factory)
         with self._client() as client:
             for delivery_id in delivery_ids:
                 claim = queue.claim_by_id(delivery_id)
                 if claim is not None:
-                    self._send(queue, client, claim, self.max_attempts, retries_used=0)
+                    self._send(queue, client, claim, attempts, retries_used=claim.retry_count)
 
     def dispatch_due(
         self,
