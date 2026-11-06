@@ -7,6 +7,7 @@ import json
 import logging
 import time
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import httpx
@@ -31,6 +32,18 @@ def build_event_payload(delivery_id: str, event_type: str, payment: Payment) -> 
         "created_at": datetime.now(timezone.utc).isoformat(),
         "data": PaymentOut.from_model(payment, include_history=False).model_dump(mode="json"),
     }
+
+
+@dataclass(frozen=True)
+class AttemptResult:
+    """Outcome of one POST to a merchant endpoint."""
+
+    status_code: int | None
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
 
 
 class WebhookOutbox:
@@ -101,41 +114,63 @@ class WebhookSender:
     def _deliver_one(
         self, client: httpx.Client, delivery: WebhookDelivery, merchant: Merchant
     ) -> None:
-        body = delivery.payload.encode("utf-8")
         for attempt in range(1, self.max_attempts + 1):
             delivery.attempts = attempt
-            headers = {
-                "Content-Type": "application/json",
-                "User-Agent": "fastapi-payment-gateway/0.1",
-                SIGNATURE_HEADER: build_signature_header(merchant.webhook_secret, body),
-                EVENT_HEADER: delivery.event_type,
-                DELIVERY_HEADER: delivery.id,
-            }
-            try:
-                response = client.post(delivery.target_url, content=body, headers=headers)
-                delivery.response_status = response.status_code
-                if 200 <= response.status_code < 300:
-                    delivery.status = "delivered"
-                    delivery.delivered_at = datetime.now(timezone.utc)
-                    delivery.last_error = None
-                    logger.info(
-                        "webhook delivered id=%s event=%s status=%s attempt=%s",
-                        delivery.id,
-                        delivery.event_type,
-                        response.status_code,
-                        attempt,
-                    )
-                    return
-                delivery.last_error = f"HTTP {response.status_code}"
-            except httpx.HTTPError as exc:
-                delivery.response_status = None
-                delivery.last_error = f"{type(exc).__name__}: {exc}"[:500]
+            result = self._post(
+                client,
+                target_url=delivery.target_url,
+                payload=delivery.payload,
+                event_type=delivery.event_type,
+                delivery_id=delivery.id,
+                secret=merchant.webhook_secret,
+            )
+            delivery.response_status = result.status_code
+            delivery.last_error = result.error
+            if result.ok:
+                delivery.status = "delivered"
+                delivery.delivered_at = datetime.now(timezone.utc)
+                logger.info(
+                    "webhook delivered id=%s event=%s status=%s attempt=%s",
+                    delivery.id,
+                    delivery.event_type,
+                    result.status_code,
+                    attempt,
+                )
+                return
             logger.warning(
                 "webhook attempt failed id=%s attempt=%s error=%s",
                 delivery.id,
                 attempt,
-                delivery.last_error,
+                result.error,
             )
             if attempt < self.max_attempts and self.backoff_seconds:
                 self._sleep(self.backoff_seconds * attempt)
         delivery.status = "failed"
+
+    @staticmethod
+    def _post(
+        client: httpx.Client,
+        *,
+        target_url: str,
+        payload: str,
+        event_type: str,
+        delivery_id: str,
+        secret: str,
+    ) -> AttemptResult:
+        """One signed POST. The signature is rebuilt per call so a late retry stays inside
+        the receiver's timestamp tolerance."""
+        body = payload.encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "fastapi-payment-gateway/0.1",
+            SIGNATURE_HEADER: build_signature_header(secret, body),
+            EVENT_HEADER: event_type,
+            DELIVERY_HEADER: delivery_id,
+        }
+        try:
+            response = client.post(target_url, content=body, headers=headers)
+        except httpx.HTTPError as exc:
+            return AttemptResult(None, f"{type(exc).__name__}: {exc}"[:500])
+        if 200 <= response.status_code < 300:
+            return AttemptResult(response.status_code)
+        return AttemptResult(response.status_code, f"HTTP {response.status_code}")
