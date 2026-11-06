@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Durable merchant webhook retries. A delivery that fails in-request moves to a new `retrying` status with a jittered `next_attempt_at` and is retried after about 1m, 5m, 30m, 2h and 12h (`WEBHOOK_RETRY_SCHEDULE`, `WEBHOOK_RETRY_JITTER`). It becomes `failed` only after the last step. State lives in the database, so retries survive a restart.
+- `python -m app.cli dispatch-webhooks` (one pass) and `--loop` (long-running worker), plus a `webhook-worker` service in docker compose. Workers claim rows with `SELECT ... FOR UPDATE SKIP LOCKED` under a lease (`WEBHOOK_LEASE_SECONDS`), so any number can run without double-sending, and a crashed worker's row comes back when the lease expires.
+- `POST /v1/webhooks/deliveries/{id}/retry` for manual redelivery. Merchant-scoped and safe to repeat.
+- `next_attempt_at` in the delivery log.
+- CI runs the webhook worker race tests against PostgreSQL.
+
+### Changed
+
+- A delivery whose in-request attempts fail now reads `retrying`, not `failed`. Anything filtering on `status=failed` sees it only after the schedule ends.
+- New deliveries are committed with a `next_attempt_at`, so a crash before the first send no longer loses the event.
+- The in-request send no longer holds a database connection during HTTP calls and backoff sleeps.
+- Upgrading needs a schema change, applied before starting the new version:
+  ```sql
+  ALTER TABLE webhook_deliveries ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE webhook_deliveries ADD COLUMN next_attempt_at TIMESTAMPTZ;
+  ALTER TABLE webhook_deliveries ADD COLUMN locked_until TIMESTAMPTZ;
+  ALTER TABLE webhook_deliveries ADD COLUMN claim_token VARCHAR(32);
+  CREATE INDEX ix_webhook_deliveries_due ON webhook_deliveries (status, next_attempt_at);
+  UPDATE webhook_deliveries SET next_attempt_at = CURRENT_TIMESTAMP WHERE status = 'pending';
+  ```
+
+### Fixed
+
+- A merchant URL httpx cannot parse fails the attempt instead of raising inside the background task.
+
 ## [0.2.0] - 2026-10-26
 
 ### Added
