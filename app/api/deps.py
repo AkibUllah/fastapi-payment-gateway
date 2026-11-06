@@ -52,8 +52,9 @@ def get_current_merchant(
     return merchant
 
 
-def get_outbox(db: Session = Depends(get_db)) -> WebhookOutbox:
-    return WebhookOutbox(db)
+def get_outbox(request: Request, db: Session = Depends(get_db)) -> WebhookOutbox:
+    sender = request.app.state.webhook_sender
+    return WebhookOutbox(db, grace_seconds=sender.lease_seconds, clock=sender.clock)
 
 
 def get_payment_service(
