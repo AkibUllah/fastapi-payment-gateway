@@ -1,18 +1,37 @@
+x-webhook-settings: &webhook-settings
+  APP_ENV: development
+  LOG_LEVEL: INFO
+  DATABASE_URL: postgresql+psycopg://gateway:gateway@db:5432/gateway
+  WEBHOOK_RETRY_SCHEDULE: ${WEBHOOK_RETRY_SCHEDULE:-60,300,1800,7200,43200}
+  WEBHOOK_LEASE_SECONDS: ${WEBHOOK_LEASE_SECONDS:-60}
+
 services:
   api:
     build: .
     ports:
       - "8000:8000"
     environment:
-      APP_ENV: development
-      LOG_LEVEL: INFO
-      DATABASE_URL: postgresql+psycopg://gateway:gateway@db:5432/gateway
+      <<: *webhook-settings
       BKASH_WEBHOOK_SECRET: ${BKASH_WEBHOOK_SECRET:-bkash-sandbox-secret}
       SSLCOMMERZ_WEBHOOK_SECRET: ${SSLCOMMERZ_WEBHOOK_SECRET:-sslcz-sandbox-secret}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_sandbox_secret}
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
+
+  # Sends webhook retries. Safe to scale: docker compose up --scale webhook-worker=3
+  webhook-worker:
+    build: .
+    command: ["python", "-m", "app.cli", "dispatch-webhooks", "--loop"]
+    environment:
+      <<: *webhook-settings
+    healthcheck:
+      disable: true  # the image's check probes the API port, which a worker doesn't open
+    depends_on:
+      api:
+        condition: service_healthy  # the API creates the schema on first boot
+    stop_grace_period: 30s  # let the row in hand finish; a killed worker's lease expires anyway
     restart: unless-stopped
 
   db:

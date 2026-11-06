@@ -1,5 +1,8 @@
 # Render blueprint: one-click deploy of the API with a managed PostgreSQL.
 # https://render.com/docs/blueprint-spec
+# Webhook retries need `python -m app.cli dispatch-webhooks --loop` running somewhere. Render
+# background workers are not on the free plan, so add one as a paid `type: worker` service with
+# dockerCommand set to that line. Without it, retries wait in the queue until a worker runs.
 services:
   - type: web
     name: fastapi-payment-gateway
